@@ -22,7 +22,8 @@ pub struct ProzedurMitGueltigkeit<'li> {
     pub validity_set: String,
     pub treatment_type: String,
     pub validity_group: String,
-    pub entlass_datum: Cell<Option<NaiveDateTime>>,
+    pub prozedur_beendet: Cell<Option<NaiveDateTime>>,
+    pub entlass_datum: Option<NaiveDateTime>,
 }
 
 pub struct Fall<'a> {
@@ -209,7 +210,7 @@ fn main() {
 
 }
 
-fn to_prozedur_with_validity(p: Rc<Prozedur>) -> ProzedurMitGueltigkeit {
+fn to_prozedur_with_validity<'a>(p: Rc<Prozedur<'a>>, f: &Fall) -> ProzedurMitGueltigkeit<'a> {
     let gt_tables = init_gt_tables();
     let mut v: i32 = 1;
     let mut vs: String = String::new();
@@ -245,7 +246,8 @@ fn to_prozedur_with_validity(p: Rc<Prozedur>) -> ProzedurMitGueltigkeit {
         validity_set: vs,
         treatment_type: tt,
         validity_group: vg,
-        entlass_datum: Cell::new(Option::from(entlass.clone())),
+        prozedur_beendet: Cell::new(Option::from(entlass.clone())),
+        entlass_datum: f.sdt.clone()
     };
 
     res
@@ -254,10 +256,15 @@ fn to_prozedur_with_validity(p: Rc<Prozedur>) -> ProzedurMitGueltigkeit {
 fn new_prozedur_with_validity<'a> (prozedur_mit_gueltigkeit: &'a ProzedurMitGueltigkeit, validity: Cell<i32>) -> ProzedurMitGueltigkeit<'a> {
     // Lesen: Umgang mit immutability
 
-    let entlass = prozedur_mit_gueltigkeit.prozedur.datum.unwrap() + Duration::days(validity.get() as i64);
+    let mut entlass = prozedur_mit_gueltigkeit.prozedur.datum.unwrap() + Duration::days(validity.get() as i64);
+
+    if entlass.signed_duration_since(prozedur_mit_gueltigkeit.entlass_datum.unwrap()).num_days() > 0 {
+        entlass = prozedur_mit_gueltigkeit.entlass_datum.unwrap().clone();
+    }
 
     prozedur_mit_gueltigkeit.validity.replace(validity.get());
-    prozedur_mit_gueltigkeit.entlass_datum.replace(Option::from(entlass));
+    prozedur_mit_gueltigkeit.prozedur_beendet.replace(Option::from(entlass));
+
         ProzedurMitGueltigkeit {
             prozedur: prozedur_mit_gueltigkeit.prozedur.clone(),
             validity,
@@ -265,7 +272,8 @@ fn new_prozedur_with_validity<'a> (prozedur_mit_gueltigkeit: &'a ProzedurMitGuel
             validity_set: prozedur_mit_gueltigkeit.validity_set.clone(),
             treatment_type: prozedur_mit_gueltigkeit.treatment_type.clone(),
             validity_group: prozedur_mit_gueltigkeit.validity_group.clone(),
-            entlass_datum: Cell::new(Option::from(entlass.clone()))
+            prozedur_beendet: Cell::new(Option::from(entlass.clone())),
+            entlass_datum: prozedur_mit_gueltigkeit.entlass_datum.clone(),
         }
 
 
@@ -335,7 +343,7 @@ fn DAYS_DAYTABLESCORE_GREATER_EQUALS(fall: Fall, tables: Vec<&Table>, values: Ve
     let mut with_validity = Vec::new();
 
     for prozedur in fall.ops.borrow().iter() {
-        let proc_with_validity = to_prozedur_with_validity(prozedur.clone());
+        let proc_with_validity = to_prozedur_with_validity(prozedur.clone(), &fall);
         with_validity.push(proc_with_validity);
     }
 
@@ -376,7 +384,7 @@ fn DAYS_DAYTABLESCORE_GREATER_EQUALS(fall: Fall, tables: Vec<&Table>, values: Ve
     for p in korrigierte_proc_validity.iter() {
         println!("Neue Gültigkeit von {} ist {}", p.prozedur.code, p.validity.get());
         println!("Von: {}", p.prozedur.datum.unwrap());
-        println!("Bis: {}", p.entlass_datum.get().unwrap());
+        println!("Bis: {}", p.prozedur_beendet.get().unwrap());
     }
 
     println!();
@@ -385,7 +393,7 @@ fn DAYS_DAYTABLESCORE_GREATER_EQUALS(fall: Fall, tables: Vec<&Table>, values: Ve
     for p in with_validity.iter() {
         println!("Neue Gültigkeit von {} ist {}", p.prozedur.code, p.validity.get());
         println!("Von: {}", p.prozedur.datum.unwrap());
-        println!("Bis: {}", p.entlass_datum.get().unwrap());
+        println!("Bis: {}", p.prozedur_beendet.get().unwrap());
     }
 
     0
