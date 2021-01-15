@@ -256,6 +256,8 @@ fn new_prozedur_with_validity<'a> (prozedur_mit_gueltigkeit: &'a ProzedurMitGuel
 
     let entlass = prozedur_mit_gueltigkeit.prozedur.datum.unwrap() + Duration::days(validity.get() as i64);
 
+    prozedur_mit_gueltigkeit.validity.replace(validity.get());
+    prozedur_mit_gueltigkeit.entlass_datum.replace(Option::from(entlass));
         ProzedurMitGueltigkeit {
             prozedur: prozedur_mit_gueltigkeit.prozedur.clone(),
             validity,
@@ -368,10 +370,19 @@ fn DAYS_DAYTABLESCORE_GREATER_EQUALS(fall: Fall, tables: Vec<&Table>, values: Ve
         println!("Gültigkeit der Menge: {}", validity_set);
         let mut res_vector = gueltigkeit_anpassen(proc_with_validities);
         korrigierte_proc_validity.append(&mut res_vector)
-
     }
 
+    println!("************** Neues Objekt ****************");
     for p in korrigierte_proc_validity.iter() {
+        println!("Neue Gültigkeit von {} ist {}", p.prozedur.code, p.validity.get());
+        println!("Von: {}", p.prozedur.datum.unwrap());
+        println!("Bis: {}", p.entlass_datum.get().unwrap());
+    }
+
+    println!();
+
+    println!("************** Altes Objekt: mit Cells ****************");
+    for p in with_validity.iter() {
         println!("Neue Gültigkeit von {} ist {}", p.prozedur.code, p.validity.get());
         println!("Von: {}", p.prozedur.datum.unwrap());
         println!("Bis: {}", p.entlass_datum.get().unwrap());
