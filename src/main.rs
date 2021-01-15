@@ -253,7 +253,8 @@ fn to_prozedur_with_validity(p: Rc<Prozedur>) -> ProzedurMitGueltigkeit {
 
 fn new_prozedur_with_validity<'a> (prozedur_mit_gueltigkeit: &'a ProzedurMitGueltigkeit, validity: Cell<i32>) -> ProzedurMitGueltigkeit<'a> {
     // Lesen: Umgang mit immutability
-    let entlass = prozedur_mit_gueltigkeit.prozedur.datum.unwrap() + Duration::days(prozedur_mit_gueltigkeit.validity.get() as i64);
+
+    let entlass = prozedur_mit_gueltigkeit.prozedur.datum.unwrap() + Duration::days(validity.get() as i64);
 
         ProzedurMitGueltigkeit {
             prozedur: prozedur_mit_gueltigkeit.prozedur.clone(),
@@ -297,6 +298,7 @@ fn gueltigkeit_anpassen<'a>(proc_with_validities: &'a mut Vec<&ProzedurMitGuelti
             let end_of_p1: i64 = calc_ueberschneidung(proc_with_validities.get(i).unwrap(), proc_with_validities.get(i + 1).unwrap());
 
             if end_of_p1 > -1 {
+                println!("!!!! end_of_p1 {}", end_of_p1);
                 result.push(new_prozedur_with_validity(proc_with_validities.get(i).unwrap(), Cell::new(end_of_p1 as i32)));
             } else {
                 result.push(new_prozedur_with_validity(
@@ -371,6 +373,8 @@ fn DAYS_DAYTABLESCORE_GREATER_EQUALS(fall: Fall, tables: Vec<&Table>, values: Ve
 
     for p in korrigierte_proc_validity.iter() {
         println!("Neue Gültigkeit von {} ist {}", p.prozedur.code, p.validity.get());
+        println!("Von: {}", p.prozedur.datum.unwrap());
+        println!("Bis: {}", p.entlass_datum.get().unwrap());
     }
 
     0
