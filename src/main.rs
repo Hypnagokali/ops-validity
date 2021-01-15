@@ -1,10 +1,11 @@
 #![allow(non_snake_case)]
 use chrono::{NaiveDateTime, NaiveDate, Timelike, Duration};
-use std::cell::RefCell;
+use std::cell::{RefCell, Cell};
 use std::rc::Rc;
 use phf::{ phf_set, Set };
 use std::collections::HashMap;
 use std::hash::Hash;
+use std::borrow::Borrow;
 
 #[derive(Debug, Clone)]
 pub struct Prozedur<'li> {
@@ -16,11 +17,12 @@ pub struct Prozedur<'li> {
 #[derive(Debug, Clone)]
 pub struct ProzedurMitGueltigkeit<'li> {
     pub prozedur: Rc<Prozedur<'li>>,
-    pub validity: i8,
-    pub validity_katalog: i8,
+    pub validity: Cell<i32>,
+    pub validity_katalog: i32,
     pub validity_set: String,
     pub treatment_type: String,
     pub validity_group: String,
+    pub entlass_datum: Cell<Option<NaiveDateTime>>,
 }
 
 pub struct Fall<'a> {
@@ -36,7 +38,7 @@ pub struct Table<'a> {
 }
 
 pub struct GtTable {
-    pub Validity: i8,
+    pub Validity: i32,
     pub ValiditySet: String,
     pub TreatmentType: String,
     pub ValidityGroup: String,
@@ -209,7 +211,7 @@ fn main() {
 
 fn to_prozedur_with_validity(p: Rc<Prozedur>) -> ProzedurMitGueltigkeit {
     let gt_tables = init_gt_tables();
-    let mut v: i8 = 1;
+    let mut v: i32 = 1;
     let mut vs: String = String::new();
     let mut tt: String = String::new();
     let mut vg: String = String::new();
@@ -234,32 +236,40 @@ fn to_prozedur_with_validity(p: Rc<Prozedur>) -> ProzedurMitGueltigkeit {
         vg = "".to_string();
     }
 
+    let entlass = p.datum.unwrap() + Duration::days(v as i64);
+
     let res = ProzedurMitGueltigkeit {
         prozedur: p,
-        validity: v,
+        validity: Cell::new(v),
         validity_katalog: v,
         validity_set: vs,
         treatment_type: tt,
         validity_group: vg,
+        entlass_datum: Cell::new(Option::from(entlass.clone())),
     };
 
     res
 }
 
-fn new_prozedur_with_validity<'a> (prozedur_mit_gueltigkeit: &'a ProzedurMitGueltigkeit, validity: i8) -> ProzedurMitGueltigkeit<'a> {
+fn new_prozedur_with_validity<'a> (prozedur_mit_gueltigkeit: &'a ProzedurMitGueltigkeit, validity: Cell<i32>) -> ProzedurMitGueltigkeit<'a> {
     // Lesen: Umgang mit immutability
-    ProzedurMitGueltigkeit {
-        prozedur: prozedur_mit_gueltigkeit.prozedur.clone(),
-        validity,
-        validity_katalog: prozedur_mit_gueltigkeit.validity_katalog,
-        validity_set: prozedur_mit_gueltigkeit.validity_set.clone(),
-        treatment_type: prozedur_mit_gueltigkeit.treatment_type.clone(),
-        validity_group: prozedur_mit_gueltigkeit.validity_group.clone()
-    }
+    let entlass = prozedur_mit_gueltigkeit.prozedur.datum.unwrap() + Duration::days(prozedur_mit_gueltigkeit.validity.get() as i64);
+
+        ProzedurMitGueltigkeit {
+            prozedur: prozedur_mit_gueltigkeit.prozedur.clone(),
+            validity,
+            validity_katalog: prozedur_mit_gueltigkeit.validity_katalog,
+            validity_set: prozedur_mit_gueltigkeit.validity_set.clone(),
+            treatment_type: prozedur_mit_gueltigkeit.treatment_type.clone(),
+            validity_group: prozedur_mit_gueltigkeit.validity_group.clone(),
+            entlass_datum: Cell::new(Option::from(entlass.clone()))
+        }
+
+
 }
 
 fn calc_ueberschneidung(p1: &ProzedurMitGueltigkeit, p2: &ProzedurMitGueltigkeit) -> i64 {
-    let end_p1 = p1.prozedur.datum.unwrap() + Duration::days(p1.validity as i64);
+    let end_p1 = p1.prozedur.datum.unwrap() + Duration::days(p1.validity.get() as i64);
     let start_p2 = p2.prozedur.datum.unwrap();
     let duration_between_dates = start_p2 - end_p1;
     if duration_between_dates.num_days() > 0 {
@@ -267,7 +277,7 @@ fn calc_ueberschneidung(p1: &ProzedurMitGueltigkeit, p2: &ProzedurMitGueltigkeit
         return -1 as i64;
     } else {
         println!("Duration in days: {}", duration_between_dates.num_days());
-        let end_p1_neu = p1.validity as i64 + duration_between_dates.num_days();
+        let end_p1_neu = p1.validity.get() as i64 + duration_between_dates.num_days();
         println!("Neue Validity = {} (wie p1 zuweisen?)", end_p1_neu);
         println!("end_p1_neu: {}", end_p1_neu);
         return end_p1_neu;
@@ -280,21 +290,18 @@ fn gueltigkeit_anpassen<'a>(proc_with_validities: &'a mut Vec<&ProzedurMitGuelti
     // Eine Zahl müsste für Gültigkeit reichen von 26.12. - 28.12. => v = 2
     proc_with_validities.sort_by(|&a, &b| a.prozedur.datum.cmp(&b.prozedur.datum));
 
-    let mut result = Vec::new();
+    let mut result: Vec<ProzedurMitGueltigkeit> = Vec::new();
 
     for i in 0..proc_with_validities.len() {
-        println!("###############################");
-        println!("{:?}", result);
-        println!("###############################");
         if i < proc_with_validities.len() - 1 {
             let end_of_p1: i64 = calc_ueberschneidung(proc_with_validities.get(i).unwrap(), proc_with_validities.get(i + 1).unwrap());
 
             if end_of_p1 > -1 {
-                result.push(new_prozedur_with_validity(proc_with_validities.get(i).unwrap(), end_of_p1 as i8));
+                result.push(new_prozedur_with_validity(proc_with_validities.get(i).unwrap(), Cell::new(end_of_p1 as i32)));
             } else {
                 result.push(new_prozedur_with_validity(
                     proc_with_validities.get(i).unwrap(),
-                    proc_with_validities.get(i).unwrap().validity));
+                    proc_with_validities.get(i).unwrap().validity.clone()));
             }
 
             println!("{} und {} überschneiden sich", proc_with_validities.get(i).unwrap().prozedur.code,
@@ -305,7 +312,7 @@ fn gueltigkeit_anpassen<'a>(proc_with_validities: &'a mut Vec<&ProzedurMitGuelti
         } else {
             result.push(new_prozedur_with_validity(
                 proc_with_validities.get(i).unwrap(),
-                proc_with_validities.get(i).unwrap().validity));
+                proc_with_validities.get(i).unwrap().validity.clone()));
         }
     }
 
@@ -363,7 +370,7 @@ fn DAYS_DAYTABLESCORE_GREATER_EQUALS(fall: Fall, tables: Vec<&Table>, values: Ve
     }
 
     for p in korrigierte_proc_validity.iter() {
-        println!("Neue Gültigkeit von {} ist {}", p.prozedur.code, p.validity);
+        println!("Neue Gültigkeit von {} ist {}", p.prozedur.code, p.validity.get());
     }
 
     0
